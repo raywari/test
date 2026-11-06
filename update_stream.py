@@ -3,7 +3,8 @@ import urllib.request
 import sys
 
 VIDEO_ID = "5c9327074e25ca86f3111d4085cbbb65"
-OUTPUT_TXT = "U-TV.txt"
+OUTPUT_TXT_720 = "U-TV.txt"
+OUTPUT_TXT_360 = "U-TV-360.txt"
 OUTPUT_M3U = "playlist.m3u"
 
 CHANNEL_META = {
@@ -24,16 +25,24 @@ def fetch_text(url: str) -> str:
     with urllib.request.urlopen(req, timeout=15) as resp:
         return resp.read().decode("utf-8")
 
-def build_m3u_content(stream_url: str) -> str:
+def build_m3u_entry(name_suffix: str, stream_url: str) -> str:
+    display_name = f"{CHANNEL_META['name']} ({name_suffix})" if name_suffix else CHANNEL_META['name']
     return (
-        "#EXTM3U url-tvg=\"http://www.teleguide.info/download/new3/xmltv.xml.gz\"\n"
         f"#EXTINF:-1 tvg-id=\"{CHANNEL_META['tvg_id']}\" "
         f"tvg-name=\"{CHANNEL_META['tvg_name']}\" "
         f"tvg-logo=\"{CHANNEL_META['tvg_logo']}\" "
         f"group-title=\"{CHANNEL_META['group_title']}\","
-        f"{CHANNEL_META['name']}\n"
+        f"{display_name}\n"
         f"{stream_url}\n"
     )
+
+def build_m3u_content(streams: dict) -> str:
+    content = "#EXTM3U url-tvg=\"http://www.teleguide.info/download/new3/xmltv.xml.gz\"\n"
+    if "720p" in streams:
+        content += build_m3u_entry("720p", streams["720p"])
+    if "360p" in streams:
+        content += build_m3u_entry("360p", streams["360p"])
+    return content
 
 def main():
     # 1. Запрос к API Rutube
@@ -54,27 +63,43 @@ def main():
     # 2. Скачивание манифеста
     manifest_body = fetch_text(master_m3u8_url)
 
-    # 3. Извлечение 720p потока
+    # 3. Извлечение потоков (720p и 360p)
     stream_720p = None
+    stream_360p = None
+
     for line in manifest_body.splitlines():
         line = line.strip()
-        if "720p_stream.m3u8" in line:
+        if "720p_stream.m3u8" in line and not stream_720p:
             stream_720p = line
-            break
+        elif "360p_stream.m3u8" in line and not stream_360p:
+            stream_360p = line
 
-    if not stream_720p:
-        print("Ошибка: Ссылка на 720p поток не найдена в манифесте", file=sys.stderr)
+    if not stream_720p and not stream_360p:
+        print("Ошибка: Ни один поток не найден в манифесте", file=sys.stderr)
         sys.exit(1)
 
     print(f"Найдена 720p ссылка:\n{stream_720p}")
+    print(f"Найдена 360p ссылка:\n{stream_360p}")
 
-    # 4. Запись U-TV.txt
-    with open(OUTPUT_TXT, "w", encoding="utf-8") as f:
-        f.write(stream_720p + "\n")
-    print(f"Успешно записано в {OUTPUT_TXT}")
+    # 4. Запись текстовых файлов
+    if stream_720p:
+        with open(OUTPUT_TXT_720, "w", encoding="utf-8") as f:
+            f.write(stream_720p + "\n")
+        print(f"Успешно записано в {OUTPUT_TXT_720}")
+
+    if stream_360p:
+        with open(OUTPUT_TXT_360, "w", encoding="utf-8") as f:
+            f.write(stream_360p + "\n")
+        print(f"Успешно записано в {OUTPUT_TXT_360}")
 
     # 5. Запись playlist.m3u
-    m3u_content = build_m3u_content(stream_720p)
+    streams = {}
+    if stream_720p:
+        streams["720p"] = stream_720p
+    if stream_360p:
+        streams["360p"] = stream_360p
+
+    m3u_content = build_m3u_content(streams)
     with open(OUTPUT_M3U, "w", encoding="utf-8") as f:
         f.write(m3u_content)
     print(f"Успешно записано в {OUTPUT_M3U}")
