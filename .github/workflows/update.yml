@@ -1,0 +1,88 @@
+name: Update U-TV Stream Link & Playlist
+
+on:
+  schedule:
+    # Запуск в 0-ю минуту каждого часа
+    - cron: '0 * * * *'
+  workflow_dispatch: # Ручной запуск кнопкой
+
+permissions:
+  contents: write
+
+jobs:
+  update-link:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup VLESS Proxy
+        env:
+          VLESS_URI: ${{ secrets.VLESS_URI }}
+        run: |
+          if [ -z "$VLESS_URI" ]; then
+            echo "VLESS_URI secret is not configured, skipping proxy setup."
+            exit 0
+          fi
+          mkdir -p "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+          echo "Downloading Xray-core..."
+          curl -sL https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o /tmp/xray.zip
+          unzip -q -o /tmp/xray.zip xray -d "$HOME/.local/bin/"
+          chmod +x "$HOME/.local/bin/xray"
+          rm -f /tmp/xray.zip
+
+          echo "Generating Xray configuration..."
+          python setup_vless.py /tmp/xray_config.json
+
+          echo "Starting Xray in background..."
+          "$HOME/.local/bin/xray" run -c /tmp/xray_config.json > /tmp/xray.log 2>&1 &
+          
+          # Check connectivity
+          PROXY_OK=false
+          for i in {1..10}; do
+            if curl -s -x http://127.0.0.1:10809 -I https://rutube.ru > /dev/null 2>&1; then
+              echo "VLESS Proxy connected successfully!"
+              echo "USE_VLESS_PROXY=true" >> $GITHUB_ENV
+              PROXY_OK=true
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$PROXY_OK" != "true" ]; then
+            echo "Warning: could not connect through proxy, outputting log:"
+            cat /tmp/xray.log || true
+          fi
+
+      - name: Run update script
+        run: |
+          if [ "$USE_VLESS_PROXY" = "true" ]; then
+            echo "Running update_stream.py through VLESS proxy..."
+            export HTTP_PROXY="http://127.0.0.1:10809"
+            export HTTPS_PROXY="http://127.0.0.1:10809"
+            export http_proxy="http://127.0.0.1:10809"
+            export https_proxy="http://127.0.0.1:10809"
+          fi
+          python update_stream.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add U-TV.txt playlist.m3u
+          
+          # Если файлы не изменились, коммит пропускается
+          if git diff --staged --quiet; then
+            echo "Файлы не изменились. Коммит не требуется."
+          else
+            git commit -m "Auto-update U-TV stream link and playlist"
+            git push
+          fi
