@@ -1,6 +1,7 @@
 import json
 import urllib.request
 import sys
+import time
 
 VIDEO_ID = "5c9327074e25ca86f3111d4085cbbb65"
 OUTPUT_TXT_720 = "U-TV.txt"
@@ -20,10 +21,21 @@ HEADERS = {
     "Referer": f"https://rutube.ru/play/embed/{VIDEO_ID}",
 }
 
-def fetch_text(url: str) -> str:
+def fetch_text(url: str, max_retries: int = 5, timeout: int = 25) -> str:
     req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return resp.read().decode("utf-8")
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.read().decode("utf-8")
+        except Exception as e:
+            last_error = e
+            print(f"Попытка {attempt}/{max_retries} для {url} не удалась: {e}", file=sys.stderr)
+            if attempt < max_retries:
+                sleep_time = attempt * 2
+                print(f"Повтор через {sleep_time} сек...", file=sys.stderr)
+                time.sleep(sleep_time)
+    raise last_error
 
 def build_m3u_entry(name_suffix: str, stream_url: str) -> str:
     display_name = f"{CHANNEL_META['name']} ({name_suffix})" if name_suffix else CHANNEL_META['name']

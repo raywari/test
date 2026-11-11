@@ -45,16 +45,17 @@ jobs:
           echo "Starting Xray in background..."
           "$HOME/.local/bin/xray" run -c /tmp/xray_config.json > /tmp/xray.log 2>&1 &
           
-          # Check connectivity
+          # Check connectivity (up to 10 attempts with 5s timeout each)
           PROXY_OK=false
           for i in {1..10}; do
-            if curl -s -x http://127.0.0.1:10809 -I https://rutube.ru > /dev/null 2>&1; then
-              echo "VLESS Proxy connected successfully!"
+            if curl -s --connect-timeout 3 --max-time 5 -x http://127.0.0.1:10809 -I https://rutube.ru > /dev/null 2>&1; then
+              echo "VLESS Proxy connected successfully on attempt $i!"
               echo "USE_VLESS_PROXY=true" >> $GITHUB_ENV
               PROXY_OK=true
               break
             fi
-            sleep 1
+            echo "Attempt $i/10: waiting for VLESS proxy connection..."
+            sleep 2
           done
 
           if [ "$PROXY_OK" != "true" ]; then
