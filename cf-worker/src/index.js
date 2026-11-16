@@ -27,7 +27,7 @@ function parseExpiryFromUrl(url) {
 }
 
 async function fetchState() {
-  const res = await fetch(STATE_URL, { cache: "no-store" });
+  const res = await fetch(`${STATE_URL}?t=${Date.now()}`, { cache: "no-store" });
   if (!res.ok) return null;
   return await res.json();
 }
