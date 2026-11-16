@@ -4,6 +4,12 @@ const WORKFLOW = "update.yml";
 const REF = "main";
 const STATE_URL = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${REF}/stream_state.json`;
 const REFRESH_THRESHOLD_MS = 30 * 60 * 1000;
+const MIN_COOLDOWN_AFTER_UPDATE_MS = 45 * 60 * 1000;
+
+const STREAM_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "Referer": "https://rutube.ru/",
+};
 
 function parseExpiryFromUrl(url) {
   if (!url) return null;
@@ -29,11 +35,11 @@ async function fetchState() {
 async function isStreamAlive(url) {
   if (!url) return false;
   try {
-    const res = await fetch(url, { method: "HEAD" });
+    const res = await fetch(url, { method: "HEAD", headers: STREAM_HEADERS });
     return res.ok;
   } catch (e) {
     try {
-      const res = await fetch(url);
+      const res = await fetch(url, { headers: STREAM_HEADERS });
       return res.ok;
     } catch (e2) {
       return false;
@@ -80,11 +86,9 @@ async function checkAndRefresh(env) {
 
     const streamUrl = state?.urls?.["720p"] || state?.url_720p;
     const alive = await isStreamAlive(streamUrl);
+    const lastUpdatedAt = state.updated_at ? state.updated_at * 1000 : null;
 
-    if (!alive) {
-      needsRefresh = true;
-      reason = "stream not alive";
-    } else if (effectiveExpiry && now >= effectiveExpiry - REFRESH_THRESHOLD_MS) {
+    if (effectiveExpiry && now >= effectiveExpiry - REFRESH_THRESHOLD_MS) {
       needsRefresh = true;
       reason = "expiring soon";
     } else if (streamUrl) {
@@ -92,7 +96,25 @@ async function checkAndRefresh(env) {
       if (parsed && now >= parsed - REFRESH_THRESHOLD_MS) {
         needsRefresh = true;
         reason = "url expiring soon";
+      } else if (!alive) {
+        if (lastUpdatedAt && (now - lastUpdatedAt < MIN_COOLDOWN_AFTER_UPDATE_MS)) {
+          return {
+            refreshed: false,
+            reason: `stream not alive but updated recently (${Math.round((now - lastUpdatedAt) / 60000)}m ago, cooldown ${MIN_COOLDOWN_AFTER_UPDATE_MS / 60000}m)`
+          };
+        }
+        needsRefresh = true;
+        reason = "stream not alive";
       }
+    } else if (!alive) {
+      if (lastUpdatedAt && (now - lastUpdatedAt < MIN_COOLDOWN_AFTER_UPDATE_MS)) {
+        return {
+          refreshed: false,
+          reason: `stream not alive but updated recently (${Math.round((now - lastUpdatedAt) / 60000)}m ago, cooldown ${MIN_COOLDOWN_AFTER_UPDATE_MS / 60000}m)`
+        };
+      }
+      needsRefresh = true;
+      reason = "stream not alive";
     }
   }
 
