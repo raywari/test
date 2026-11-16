@@ -2,9 +2,14 @@ name: Update U-TV Stream Link & Playlist
 
 on:
   schedule:
-    # Запуск в 0-ю минуту каждого часа
-    - cron: '0 * * * *'
-  workflow_dispatch: # Ручной запуск кнопкой
+    # Every 4 hours (GitHub cron is unreliable; smart skip logic below avoids unnecessary work)
+    - cron: '0 */4 * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force refresh even if link is still valid'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -17,12 +22,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      - name: Check if refresh is needed
+        id: check
+        env:
+          FORCE_REFRESH: ${{ inputs.force && 'true' || 'false' }}
+        run: |
+          REFRESH=$(python3 update_stream.py --check)
+          echo "$REFRESH"
+          echo "refresh=${REFRESH#refresh=}" >> "$GITHUB_OUTPUT"
 
       - name: Setup VLESS Proxy
+        if: steps.check.outputs.refresh == 'true'
         env:
           VLESS_URI: ${{ secrets.VLESS_URI }}
         run: |
@@ -40,12 +50,11 @@ jobs:
           rm -f /tmp/xray.zip
 
           echo "Generating Xray configuration..."
-          python setup_vless.py /tmp/xray_config.json
+          python3 setup_vless.py /tmp/xray_config.json
 
           echo "Starting Xray in background..."
           "$HOME/.local/bin/xray" run -c /tmp/xray_config.json > /tmp/xray.log 2>&1 &
-          
-          # Check connectivity (up to 10 attempts with 5s timeout each)
+
           PROXY_OK=false
           for i in {1..10}; do
             if curl -s --connect-timeout 3 --max-time 5 -x http://127.0.0.1:10809 -I https://rutube.ru > /dev/null 2>&1; then
@@ -64,6 +73,9 @@ jobs:
           fi
 
       - name: Run update script
+        if: steps.check.outputs.refresh == 'true'
+        env:
+          FORCE_REFRESH: ${{ inputs.force && 'true' || 'false' }}
         run: |
           if [ "$USE_VLESS_PROXY" = "true" ]; then
             echo "Running update_stream.py through VLESS proxy..."
@@ -72,15 +84,15 @@ jobs:
             export http_proxy="http://127.0.0.1:10809"
             export https_proxy="http://127.0.0.1:10809"
           fi
-          python update_stream.py
+          python3 update_stream.py --force
 
       - name: Commit and push changes
+        if: steps.check.outputs.refresh == 'true'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add U-TV.txt U-TV-360.txt playlist.m3u
-          
-          # Если файлы не изменились, коммит пропускается
+          git add U-TV.txt U-TV-360.txt playlist.m3u stream_state.json
+
           if git diff --staged --quiet; then
             echo "Файлы не изменились. Коммит не требуется."
           else
