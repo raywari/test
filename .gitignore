@@ -1,0 +1,6 @@
+.dev.vars
+.env
+.wrangler/
+cf-worker/.wrangler/
+cf-worker/node_modules/
+node_modules/

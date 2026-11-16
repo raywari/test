@@ -1,9 +1,6 @@
 name: Update U-TV Stream Link & Playlist
 
 on:
-  schedule:
-    # Every 4 hours (GitHub cron is unreliable; smart skip logic below avoids unnecessary work)
-    - cron: '0 */4 * * *'
   workflow_dispatch:
     inputs:
       force:
