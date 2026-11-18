@@ -2,7 +2,10 @@ const OWNER = "raywari";
 const REPO = "test";
 const WORKFLOW = "update.yml";
 const REF = "main";
-const STATE_URL = `https://raw.githubusercontent.com/${OWNER}/${REPO}/${REF}/stream_state.json`;
+// raw.githubusercontent.com is CDN-cached (max-age=300) and ignores query strings,
+// so the worker read stale state for up to 5 minutes and skipped real dispatch.
+// The contents API is uncached with a token and returns the blob base64-encoded.
+const STATE_API = `https://api.github.com/repos/${OWNER}/${REPO}/contents/stream_state.json?ref=${REF}`;
 const REFRESH_THRESHOLD_MS = 30 * 60 * 1000;
 const MIN_COOLDOWN_AFTER_UPDATE_MS = 45 * 60 * 1000;
 
@@ -26,10 +29,30 @@ function parseExpiryFromUrl(url) {
   return null;
 }
 
-async function fetchState() {
-  const res = await fetch(`${STATE_URL}?t=${Date.now()}`, { cache: "no-store" });
+function decodeBase64Utf8(b64) {
+  const bin = atob(b64.replace(/\s+/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+async function fetchState(env) {
+  const headers = {
+    "Accept": "application/vnd.github+json",
+    "User-Agent": "rutube-refresh-worker",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  if (env?.GH_TOKEN) headers["Authorization"] = `Bearer ${env.GH_TOKEN}`;
+  const url = STATE_API;
+  const res = await fetch(url, { headers, cache: "no-store" });
   if (!res.ok) return null;
-  return await res.json();
+  const body = await res.json();
+  try {
+    if (body?.content) return JSON.parse(decodeBase64Utf8(body.content));
+  } catch (e) {
+    return null;
+  }
+  return null;
 }
 
 async function isStreamAlive(url) {
@@ -71,7 +94,7 @@ async function triggerRefresh(env) {
 }
 
 async function checkAndRefresh(env) {
-  const state = await fetchState();
+  const state = await fetchState(env);
   let needsRefresh = false;
   let reason = "";
 
