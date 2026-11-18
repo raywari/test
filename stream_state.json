@@ -1,10 +1,10 @@
 {
-  "updated_at": 1794852163.4923003,
-  "expires_at": 1794870163.4923003,
+  "updated_at": 1795030188.7638714,
+  "expires_at": 1795048188.7638714,
   "ttl_seconds": 18000,
-  "url_expiry": 1795456963,
+  "url_expiry": 1795634988,
   "urls": {
-    "720p": "https://river-m9-pitix-d3117.rtbcdn.ru/stream/genetta-313.m9.rutube.ru/clIV4GMj35GL_9gkOWzoOg/1795456963/5c9327074e25ca86f3111d4085cbbb65/720p_stream.m3u8",
-    "360p": "https://river-m9-pitix-d3117.rtbcdn.ru/stream/genetta-313.m9.rutube.ru/clIV4GMj35GL_9gkOWzoOg/1795456963/5c9327074e25ca86f3111d4085cbbb65/360p_stream.m3u8"
+    "720p": "https://river-3-345.rtbcdn.ru/stream/genetta-313.m9.rutube.ru/IgAW7kFKTscZeYluVCDAUw/1795634988/5c9327074e25ca86f3111d4085cbbb65/720p_stream.m3u8",
+    "360p": "https://river-3-345.rtbcdn.ru/stream/genetta-313.m9.rutube.ru/IgAW7kFKTscZeYluVCDAUw/1795634988/5c9327074e25ca86f3111d4085cbbb65/360p_stream.m3u8"
   }
 }
