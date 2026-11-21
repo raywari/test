@@ -1,9 +1,9 @@
 name: Update U-TV Stream Link & Playlist
 
 on:
-  # Safety-net cron: runs even if the Cloudflare Worker trigger is broken.
+  # Safety-net cron: runs every 4 days (link TTL is 5 days).
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "0 0 */4 * *"
   workflow_dispatch:
     inputs:
       force:
